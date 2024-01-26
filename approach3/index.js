@@ -1,7 +1,8 @@
 import http from "node:http";
 import log from "pino";
 const { randomBytes } = await import("node:crypto");
-import { Service } from "./service.js";
+import { Service } from "../service.js";
+import {JWT} from './jwt.js'
 
 const logger = log();
 
@@ -17,6 +18,8 @@ async function parseBody(req) {
     });
   });
 }
+
+const jwt = new JWT('../private_key.pem', '../public_key.pem')
 
 const server = http.createServer(async (req, res) => {
   const service = new Service();
@@ -52,8 +55,7 @@ const server = http.createServer(async (req, res) => {
         return;
       } else {
         logger.info("Login successful for " + email);
-        const { token } = await service.createSession({ email });
-        console.log("=====> Session created");
+        const token = jwt.sign({email})
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ message: "login successful", token: token }));
         return;
@@ -82,9 +84,8 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     try {
-      const { isValid, sessionToken: validatedToken } =
-        await service.validateSession({ email, sessionToken });
-      logger.info({ isValid, validatedToken });
+      const isValid = jwt.verify(sessionToken)
+      logger.info({ isValid, sessionToken });
       if (isValid === false) {
         res.writeHead(401, { "Content-Type": "text/plain" });
         res.end("Unauthorized: Invalid/Missing Token");
@@ -92,7 +93,7 @@ const server = http.createServer(async (req, res) => {
       } else {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(
-          JSON.stringify({ message: "valid session", token: validatedToken })
+          JSON.stringify({ message: "valid session", token: sessionToken })
         );
         return;
       }
@@ -109,8 +110,3 @@ const server = http.createServer(async (req, res) => {
 server.listen(4100, () => {
   console.log("Server started at 4100");
 });
-
-// server.close(() => {
-//   console.log("Closing the server");
-//   connection.end();
-// });

@@ -8,12 +8,14 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import util from 'node:util'
+import log from "pino";
 
+const logger = log()
 function  base64url(string) {
   return Buffer.from(string, 'utf-8').toString('base64')
 }
 
-class JWT {
+export class JWT {
   constructor(privateKeyFilePath, publicKeyFilePath) {
     if(!privateKeyFilePath) throw new Error('Please pass a valid path to private key file')
     if(!publicKeyFilePath) throw new Error('Please pass a valid path to public key file')
@@ -29,7 +31,7 @@ class JWT {
     this.privateKey = fs.readFileSync(new URL(privateKeyFilePath, import.meta.url).pathname, 'utf-8')
   }
 
-  sign(payload, algo, expiry) {
+  sign(payload, expiry) {
     if(!this.privateKey) throw new Error('Please pass valid private key in constructor')
     const header = {
       alg: 'RS256', // This implementation only supports RS256
@@ -56,8 +58,13 @@ class JWT {
 
   verify(jwtString) {
     if(!this.publicKey) throw new Error('Please pass valid public key in constructor')
+    const clockTimestamp = Math.floor(Date.now()/1000)
     const [headerString, payloadString, signatureString] = jwtString.split('.')
-    console.log({headerString, payloadString, signatureString})
+    const payload = JSON.parse(payloadString)
+    if( payload.exp && clockTimestamp >= payload.exp) {
+      logger.error('token has expired');
+      return false
+    }
     const verifier = crypto.createVerify('RSA-SHA256')
     verifier.update(headerString+'.'+payloadString)
     const isVerified = verifier.verify(this.publicKey, signatureString, 'base64')
@@ -79,8 +86,3 @@ class JWT {
     }
   }
 }
-
-const jwt = new JWT('../private_key.pem', '../public_key.pem')
-const token = jwt.sign({email: 'user1@gmail.com'})
-console.log('=====> is token valid ', jwt.verify(token))
-console.log('=====> decoded token ', jwt.decode(token))
